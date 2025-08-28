@@ -1,0 +1,177 @@
+import React, { useMemo, useState } from "react";
+
+// =============== utils ===============
+const addDays = (d, n) => {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() + n);
+  return x;
+};
+const ymd = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` : "");
+const fmt = (d) => (d ? d.toLocaleDateString("ko-KR", {year:"numeric", month:"long", day:"numeric"}) : "—");
+
+// =============== calendar ===============
+function CalendarMonth({ baseDate, highlightAvg, highlightRange, markMating }){
+  const first = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+  const start = addDays(first, -((first.getDay()+7)%7));
+  const days = Array.from({length:42}, (_,i)=>addDays(start,i));
+  const isSame = (a,b)=>a&&b&&a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+  const inRange = (d)=>highlightRange && d>=highlightRange[0] && d<=highlightRange[1];
+  return (
+    <div className="w-full">
+      <div className="flex items-center justify-between text-sm text-slate-500 px-1 mb-1">
+        <span className="font-semibold text-slate-700">{baseDate.toLocaleDateString(undefined,{year:"numeric",month:"long"})}</span>
+        <span>일 월 화 수 목 금 토</span>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((d,i)=>{
+          const other = d.getMonth()!==baseDate.getMonth();
+          const avg = isSame(d, highlightAvg);
+          const mate = isSame(d, markMating);
+          const range = inRange(d);
+          return (
+            <div key={i} title={ymd(d)} className={["h-10 rounded-xl border flex items-center justify-center relative text-sm",
+              range?"bg-amber-100 border-amber-200":"bg-white border-slate-200",
+              other?"text-slate-300":"text-slate-800"].join(" ")}
+            >
+              <span className={avg?"font-extrabold":""}>{d.getDate()}</span>
+              {avg && <span className="absolute inset-0 ring-2 ring-amber-500 rounded-xl"/>}
+              {mate && <span className="absolute bottom-1 h-1.5 w-1.5 rounded-full bg-blue-500"/>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-3 text-xs text-slate-500 mt-2">
+        <div className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-amber-200"/> 출산범위</div>
+        <div className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-blue-500"/> 교배일</div>
+        <div className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded border-2 border-amber-500"/> 평균 예정일</div>
+      </div>
+    </div>
+  );
+}
+
+// =============== app ===============
+export default function App(){
+  const [mode, setMode] = useState("mating"); // mating | hd | bpd
+  const [matingStr, setMatingStr] = useState("");
+  const [hd, setHd] = useState(""); // mm
+  const [bpd, setBpd] = useState(""); // mm
+
+  const matingDate = useMemo(()=> matingStr? new Date(matingStr) : null, [matingStr]);
+  const avgDueMating = useMemo(()=> matingDate? addDays(matingDate,63) : null, [matingDate]);
+  const rangeMating = useMemo(()=> matingDate? [addDays(matingDate,58), addDays(matingDate,67)] : null, [matingDate]);
+
+  const hdCalc = useMemo(()=>{
+    if(!hd || isNaN(+hd)) return null;
+    const ga = 25*(parseFloat(hd)/10)+3;
+    const daysLeft = 63 - ga;
+    const due = addDays(new Date(), Math.round(daysLeft));
+    const range = [addDays(due, -2), addDays(due, 4)];
+    return { ga, daysLeft, due, range };
+  },[hd]);
+
+  const bpdCalc = useMemo(()=>{
+    if(!bpd || isNaN(+bpd)) return null;
+    const daysLeft = (parseFloat(bpd)-23.39)/0.47;
+    const due = addDays(new Date(), Math.round(daysLeft));
+    const range = [addDays(due, -2), addDays(due, 4)];
+    return { daysLeft, due, range };
+  },[bpd]);
+
+  const calMonth = useMemo(()=>{
+    const cand = mode==="mating"? avgDueMating : mode==="hd"? hdCalc?.due : bpdCalc?.due;
+    const d = cand || matingDate || new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  }, [mode, avgDueMating, hdCalc, bpdCalc, matingDate]);
+
+  const Tabs = () => (
+    <div className="flex justify-center gap-2 flex-wrap">
+      {[
+        {k:"mating", label:"교배일 기준"},
+        {k:"hd", label:"HD"},
+        {k:"bpd", label:"BPD"},
+      ].map(t=> (
+        <button key={t.k}
+          onClick={()=>setMode(t.k)}
+          aria-selected={mode===t.k}
+          className={["px-3 py-2 rounded-xl border text-sm font-semibold transition",
+            mode===t.k?"bg-blue-600 text-white border-blue-600 shadow":"bg-white border-slate-200 text-slate-700 hover:bg-slate-50"].join(" ")}
+        >{t.label}</button>
+      ))}
+    </div>
+  );
+
+  const InputCard = () => (
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm max-w-xl mx-auto">
+      {mode==="mating" && (
+        <div className="space-y-2">
+          <label className="text-sm font-semibold text-slate-700">교배일 선택</label>
+          <input type="date" value={matingStr} onChange={(e)=>setMatingStr(e.target.value)} className="w-full border rounded-xl px-3 py-2"/>
+          <p className="text-xs text-slate-500">BSAVA: 평균 63일 · 정상 범위 58–67일</p>
+        </div>
+      )}
+      {mode==="hd" && (
+        <div className="space-y-2">
+          <label className="text-sm font-semibold text-slate-700">두부 직경 (HD, mm)</label>
+          <input type="number" step="0.1" inputMode="decimal" value={hd} onChange={(e)=>setHd(e.target.value)} className="w-full border rounded-xl px-3 py-2"/>
+          <p className="text-xs text-slate-500">GA ≈ 25×HD(mm/10)+3 · 남은 일수 ≈ 63 − GA</p>
+        </div>
+      )}
+      {mode==="bpd" && (
+        <div className="space-y-2">
+          <label className="text-sm font-semibold text-slate-700">두정골간 직경 (BPD, mm)</label>
+          <input type="number" step="0.1" inputMode="decimal" value={bpd} onChange={(e)=>setBpd(e.target.value)} className="w-full border rounded-xl px-3 py-2"/>
+          <p className="text-xs text-slate-500">남은 일수 ≈ (BPD−23.39)/0.47</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const Results = () => {
+    const range = mode==="mating" ? rangeMating : mode==="hd" ? hdCalc?.range : bpdCalc?.range;
+    const due = mode==="mating" ? avgDueMating : mode==="hd" ? hdCalc?.due : bpdCalc?.due;
+    if(!due) return <p className="text-sm text-slate-500">값을 입력하세요.</p>;
+    return (
+      <div className="space-y-2 text-sm">
+        {mode === "hd" && hdCalc && <div className="flex items-center gap-2"><span className="inline-flex w-28 text-slate-500">GA <span className='text-xs'>(임신 경과일)</span></span><strong>{hdCalc.ga.toFixed(1)}일차</strong></div>}
+{mode === "bpd" && bpdCalc && <div className="flex items-center gap-2"><span className="inline-flex w-28 text-slate-500">GA <span className='text-xs'>(임신 경과일)</span></span><strong>{(63 - bpdCalc.daysLeft).toFixed(1)}일차</strong></div>}
+{mode === "mating" && matingDate && <div className="flex items-center gap-2"><span className="inline-flex w-28 text-slate-500">GA <span className='text-xs'>(임신 경과일)</span></span><strong>{Math.floor((new Date() - matingDate) / (1000 * 60 * 60 * 24))}일차</strong></div>}
+<div className="flex items-center gap-2"><span className="inline-flex w-28 text-slate-500">예정일</span><strong>{fmt(due)}</strong><span className="text-xs text-slate-400">(63일 기준)</span></div>
+<p className="text-xs text-slate-500">* 58~67일 범위를 정상 분만 범위로 간주합니다.</p>
+      </div>
+    );
+  };
+
+  const avgDue = mode==="mating"? avgDueMating : mode==="hd"? hdCalc?.due : bpdCalc?.due;
+  const highlightRange = mode==="mating"? rangeMating : mode==="hd"? hdCalc?.range : bpdCalc?.range;
+  const markMating = mode==="mating"? matingDate : null;
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 p-4">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <header className="text-center">
+          <h1 className="text-2xl font-bold text-blue-700">Pregnancy Calculator (Cat)</h1>
+          <p className="text-xs text-slate-500 mt-1">BSAVA 기준 · HD/BPD 지원</p>
+        </header>
+
+        <Tabs />
+        <InputCard />
+
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <h2 className="font-semibold mb-2">분만 예정일</h2>
+          <Results />
+        </section>
+
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <h2 className="font-semibold mb-2">달력</h2>
+          {avgDue ? (
+            <CalendarMonth baseDate={calMonth} highlightAvg={avgDue} highlightRange={highlightRange} markMating={markMating} />
+          ) : (
+            <p className="text-sm text-slate-500">입력을 완료하면 달력이 표시됩니다.</p>
+          )}
+        </section>
+
+        
+      </div>
+    </div>
+  );
+}
